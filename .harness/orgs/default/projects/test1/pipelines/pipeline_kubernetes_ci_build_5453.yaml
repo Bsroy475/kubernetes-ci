@@ -1,0 +1,49 @@
+pipeline:
+  id: pipeline_kubernetes_ci_build_5453
+  name: pipeline_kubernetes_ci_build_5453
+  stages:
+    - name: CI
+      id: ci
+      clone:
+        enabled: true
+      cache:
+        enabled: true
+      steps:
+        - name: Setup Go
+          id: setup_go
+          run:
+            shell: bash
+            script: |-
+              set -euo pipefail
+              wget -q https://go.dev/dl/go1.27.2.linux-amd64.tar.gz
+              sudo tar -C /usr/local -xzf go1.27.2.linux-amd64.tar.gz
+              rm go1.27.2.linux-amd64.tar.gz
+              echo 'export PATH=/usr/local/go/bin:$PATH' | sudo tee /etc/profile.d/golang.sh
+              /usr/local/go/bin/go version
+        - name: Test
+          id: test
+          run:
+            shell: bash
+            script: |-
+              source /etc/profile.d/golang.sh
+              command -v go
+              go version
+              command -v jq || sudo apt-get install -y -q jq
+              mkdir -p .harness/reports .harness/coverage
+              make test \
+                KUBE_JUNIT_REPORT_DIR=.harness/reports \
+                KUBE_COVER=y \
+                KUBE_COVER_REPORT_DIR=.harness/coverage
+            report:
+              type: junit
+              paths:
+                - .harness/reports/*.xml
+        - name: Upload Coverage
+          id: upload_coverage
+          run:
+            shell: bash
+            script: |-
+              test -s ".harness/coverage/combined-coverage.out"
+              hcli cov upload --file=".harness/coverage/combined-coverage.out"
+  tags:
+    onboarding: "true"
