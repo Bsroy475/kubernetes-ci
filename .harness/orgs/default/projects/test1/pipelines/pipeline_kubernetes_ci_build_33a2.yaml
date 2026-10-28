@@ -1,0 +1,68 @@
+pipeline:
+  id: pipeline_kubernetes_ci_build_33a2
+  name: pipeline_kubernetes_ci_build_33a2
+  stages:
+    - name: Build and Test
+      id: build_and_test
+      clone:
+        enabled: true
+      platform:
+        os: linux
+        arch: amd64
+      runtime: cloud
+      cache:
+        enabled: true
+      steps:
+        - name: Install Go and jq
+          id: install_go
+          run:
+            shell: bash
+            script: |-
+              # Install Go 1.27.2 (version pinned by .go-version and go.mod/go.work)
+              curl -fsSL https://go.dev/dl/go1.27.2.linux-amd64.tar.gz | sudo tar -C /usr/local -xz
+              export PATH=/usr/local/go/bin:${PATH}
+              go version
+
+              # Install jq — required by hack/make-rules/test.sh via kube::util::require-jq
+              if ! command -v jq &>/dev/null; then
+                sudo apt-get install -y jq 2>/dev/null || sudo yum install -y jq 2>/dev/null || true
+              fi
+              jq --version
+        - name: Run Unit Tests
+          id: run_unit_tests
+          run:
+            shell: bash
+            script: |-
+              # Add installed Go to PATH
+              export PATH=/usr/local/go/bin:${PATH}
+
+              # Create report and coverage directories
+              mkdir -p .harness/reports .harness/coverage
+
+              # KUBE_JUNIT_REPORT_DIR causes hack/make-rules/test.sh to write
+              # JUnit XML files named junit_<prefix><timestamp>.xml to this directory.
+              export KUBE_JUNIT_REPORT_DIR=.harness/reports
+
+              # KUBE_COVER=y enables -coverprofile per package and generates
+              # combined-coverage.out in KUBE_COVER_REPORT_DIR.
+              export KUBE_COVER=y
+              export KUBE_COVER_REPORT_DIR=.harness/coverage
+
+              # Run the full unit test suite. hack/make-rules/test.sh auto-installs
+              # gotestsum (from hack/tools) and prune-junit-xml (from cmd/prune-junit-xml).
+              # The race detector (-race) is enabled by default (KUBE_RACE=-race).
+              make test
+            report:
+              type: junit
+              paths:
+                - .harness/reports/*.xml
+        - name: Upload Coverage
+          id: upload_coverage
+          run:
+            shell: bash
+            script: |-
+              # Verify that the coverage file was produced by the test step
+              test -s ".harness/coverage/combined-coverage.out"
+              hcli cov upload --file=".harness/coverage/combined-coverage.out"
+  tags:
+    onboarding: "true"
