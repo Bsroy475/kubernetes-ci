@@ -1,0 +1,41 @@
+pipeline:
+  id: pipeline_kubernetes_ci_build_2f04
+  name: pipeline_kubernetes_ci_build_2f04
+  stages:
+    - name: Build and Test
+      id: build_and_test
+      runtime: cloud
+      platform:
+        os: linux
+        arch: amd64
+      clone:
+        enabled: true
+      cache:
+        enabled: true
+      steps:
+        - name: Test
+          id: test
+          run:
+            container:
+              image: golang:1.27.2
+            shell: bash
+            script: |-
+              apt-get update -qq && apt-get install -y -qq make jq
+              mkdir -p .harness/reports .harness/coverage
+              KUBE_JUNIT_REPORT_DIR=.harness/reports \
+              KUBE_COVER=y \
+              KUBE_COVER_REPORT_DIR=.harness/coverage \
+              make test
+            report:
+              type: junit
+              paths:
+                - .harness/reports/junit_*.xml
+        - name: Upload Coverage
+          id: upload_coverage
+          run:
+            shell: bash
+            script: |-
+              test -s ".harness/coverage/combined-coverage.out"
+              hcli cov upload --file=".harness/coverage/combined-coverage.out"
+  tags:
+    onboarding: "true"
