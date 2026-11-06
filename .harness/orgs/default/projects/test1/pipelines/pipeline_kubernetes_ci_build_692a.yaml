@@ -1,0 +1,66 @@
+pipeline:
+  id: pipeline_kubernetes_ci_build_692a
+  name: pipeline_kubernetes_ci_build_692a
+  stages:
+    - name: Build and Test
+      id: build_and_test
+      runtime: cloud
+      platform:
+        os: linux
+        arch: amd64
+      clone:
+        enabled: true
+      cache:
+        enabled: true
+      steps:
+        - name: Setup Go and System Dependencies
+          id: setup_go
+          run:
+            shell: bash
+            script: |-
+              sudo apt-get update -qq
+              sudo apt-get install -y -qq jq build-essential
+              GO_VERSION="1.27.2"
+              sudo rm -rf /usr/local/go
+              wget -q "https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz" -O /tmp/go.tar.gz
+              sudo tar -C /usr/local -xzf /tmp/go.tar.gz
+              rm -f /tmp/go.tar.gz
+              export PATH="/usr/local/go/bin:${PATH}"
+              go version
+        - name: Build
+          id: build
+          run:
+            shell: bash
+            script: |-
+              export PATH="/usr/local/go/bin:${PATH}"
+              export GOPATH=/harness/.cache/go
+              export GOCACHE=/harness/.cache/go-build
+              go version
+              make all
+        - name: Test
+          id: test
+          run:
+            shell: bash
+            script: |-
+              export PATH="/usr/local/go/bin:${PATH}"
+              export GOPATH=/harness/.cache/go
+              export GOCACHE=/harness/.cache/go-build
+              export CI=true
+              mkdir -p .harness/reports .harness/coverage
+              KUBE_JUNIT_REPORT_DIR="$(pwd)/.harness/reports" \
+              KUBE_COVER=y \
+              KUBE_COVER_REPORT_DIR="$(pwd)/.harness/coverage" \
+                make test
+            report:
+              type: junit
+              paths:
+                - .harness/reports/junit_*.xml
+        - name: Upload Coverage
+          id: upload_coverage
+          run:
+            shell: bash
+            script: |-
+              test -s ".harness/coverage/combined-coverage.out"
+              hcli cov upload --file=".harness/coverage/combined-coverage.out"
+  tags:
+    onboarding: "true"
