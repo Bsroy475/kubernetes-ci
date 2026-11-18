@@ -1,0 +1,44 @@
+pipeline:
+  id: pipeline_kubernetes_ci_build_756d
+  name: pipeline_kubernetes_ci_build_756d
+  stages:
+    - name: Build and Test
+      id: build_and_test
+      runtime: cloud
+      platform:
+        os: linux
+        arch: amd64
+      clone:
+        enabled: true
+      cache:
+        enabled: true
+      steps:
+        - name: Run Tests
+          id: run_tests
+          run:
+            shell: bash
+            script: |-
+              mkdir -p .harness/reports .harness/coverage
+              export GOPATH=/harness/.cache/go
+              export GOMODCACHE=/harness/.cache/go/pkg/mod
+              export GOCACHE=/harness/.cache/go-build
+              export KUBE_JUNIT_REPORT_DIR=.harness/reports
+              export KUBE_COVER=y
+              export KUBE_COVER_REPORT_DIR=.harness/coverage
+              make test
+            report:
+              type: junit
+              paths:
+                - .harness/reports/*.xml
+        - name: Upload Coverage
+          id: upload_coverage
+          run:
+            shell: bash
+            script: |-
+              if [ -f ".harness/coverage/combined-coverage.out" ]; then
+                hcli cov upload --file=".harness/coverage/combined-coverage.out"
+              else
+                echo "Coverage file not found, skipping upload"
+              fi
+  tags:
+    onboarding: "true"
